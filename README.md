@@ -20,7 +20,8 @@ The overall performance of all selected four model are not ideal, which may caus
 1. Insufficient Predictors
 2. Unclear Boundary Between Case Status (Certified and Certified-Withdrawn)
 3. Factual or political reason
-The second guess was addressed and verified by the same dataset. Certified and Certified-Withdrawn are group together, and Withdrawn is completely dropped out. Denied is kept unchanged. In general, the updated data set that has 2 levels has a better performance than the original data with 4 levels. But its preformance on testing dataset is still poor. Therefore, having multiple levels on outcome variable is not the main reason that cause the model to preform poorly.
+
+The second guess was addressed and verified in *troubleshooting.Rmd* and *troubleshooting.html*. Certified and Certified-Withdrawn are group together, and Withdrawn is completely dropped out. Denied is kept unchanged. In general, the updated data set that has 2 levels has a better performance than the original data with 4 levels. But its preformance on testing dataset is still poor. Therefore, having multiple levels on outcome variable is not the main reason that cause the model to preform poorly.
 
 ## Conclusion
 Random forest model wins with a narrow margin. However, its performance on the testing set shows that it does not help much on determining the H-1B visa’s case status. The problems may involves with factual issues that is outside of the data. In order to improve model, a more detailed information about the applicants, such as gender and ethnicity, are require to build a better model.
