@@ -1,0 +1,11 @@
+1. my logistic regression doesn't work at all. No idea what's going on.
+
+2. all the model perform poorly. How should I improve it? Possible  issue I am thinking about:
+a. the difference between certified and certified-withdrawn is not clear (since it is the decision made by the company side, not immigration department)
+b. problem occurs when randomly split the original data (not sure what's the correct function to use rather than sample() )
+c. downsample ration = 3 is too high?
+d. the range for tuning is not good
+
+3. still working on conclusion! I wanna do it after I have a better model result.
+
+4. graph took centuries to kint. Can I save and load them too?

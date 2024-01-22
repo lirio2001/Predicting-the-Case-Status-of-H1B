@@ -1,0 +1,236 @@
+---
+title: "updated"
+author: "Lirio Li"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidymodels)
+library(ISLR)
+library(ISLR2)
+library(tidyverse)
+library(glmnet)
+library(modeldata)
+library(ggthemes)
+library(janitor) 
+library(naniar)
+library(corrplot) 
+library(patchwork)
+library(forcats)
+library(ranger)
+library(vip)
+library(gsubfn)
+library(themis)
+tidymodels_prefer()
+
+set.seed(1256)
+```
+
+```{r}
+h1b_update <- read.csv("h1b_data_sample_update.csv")
+
+h1b_update <- h1b_update %>% 
+  mutate(NEW_CASE_STATUS = factor(NEW_CASE_STATUS)) %>% 
+  mutate(SOC_NAME = factor(SOC_NAME)) %>%
+  mutate(FULL_TIME_POSITION = factor(FULL_TIME_POSITION)) %>%
+  mutate(YEAR = factor(YEAR)) %>%
+  mutate(REGION = factor(REGION))
+
+head(h1b_update)  
+```
+
+```{r}
+h1b_split2 <- initial_split(h1b_update, prop = 0.90, strata = "NEW_CASE_STATUS")
+h1b_train2 <- training(h1b_split2)
+h1b_test2 <- testing(h1b_split2)
+```
+
+```{r}
+h1b_recipe2 <- recipe(NEW_CASE_STATUS ~ SOC_NAME + FULL_TIME_POSITION +  PREVAILING_WAGE + YEAR + REGION, data = h1b_train2) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_normalize(all_numeric_predictors()) %>%
+  step_downsample(NEW_CASE_STATUS, under_ratio = 2)
+```
+
+```{r}
+h1b_folds2 <- vfold_cv(h1b_train2, v = 5, strata = "NEW_CASE_STATUS")
+```
+
+1.  KNN
+
+```{r}
+knn_mod <- nearest_neighbor(neighbors = tune()) %>%
+  set_mode("classification") %>%
+  set_engine("kknn")
+
+knn_wk2 <- workflow() %>% 
+  add_model(knn_mod) %>% 
+  add_recipe(h1b_recipe2)
+
+neighbors_grid2 <- grid_regular(neighbors(range = c(100, 300)), levels = 10)
+
+```
+
+```{r, eval=FALSE}
+tune_res_knn2 <- tune_grid(
+  object = knn_wk2, 
+  resamples = h1b_folds2, 
+  grid = neighbors_grid2)
+
+save(tune_res_knn2, file = "tune_res_knn2.rda")
+```
+
+```{r}
+load("tune_res_knn2.rda")
+```
+
+```{r}
+show_best(tune_res_knn2, metric = "roc_auc")
+best_neighbors2 <- select_by_one_std_err(tune_res_knn2, desc(neighbors), metric = "roc_auc") #best: K =277, roc_auc = 0.7326
+```
+
+2.  logistic regression
+
+```{r}
+lr_mod <- multinom_reg(penalty = 0) %>%
+  set_mode("classification") %>%
+  set_engine("glmnet")
+
+lr_wk2 <- workflow() %>% 
+  add_model(lr_mod) %>% 
+  add_recipe(h1b_recipe2)
+
+lr_fit_val2 <- lr_wk2 %>% 
+ fit_resamples(resamples = h1b_folds2)
+
+save(lr_fit_val2, file = "lr_fit_val.rda")
+
+```
+
+```{r}
+collect_metrics(lr_fit_val2) # roc_auc = 0.7353
+```
+
+3.  Elastic Net
+
+```{r}
+en_mod <- multinom_reg(mixture = tune(), 
+                              penalty = tune()) %>%
+  set_mode("classification") %>%
+  set_engine("glmnet")
+
+en_wk2 <- workflow() %>% 
+  add_recipe(h1b_recipe2) %>% 
+  add_model(en_mod)
+
+en_grid <- grid_regular(penalty(range = c(0, 1),
+                                     trans = identity_trans()),
+                        mixture(range = c(0, 1)),
+                             levels = 10)
+```
+
+```{r, eval=FALSE}
+tune_res_en2 <- tune_grid(
+  en_wk2,
+  resamples = h1b_folds2, 
+  grid = en_grid
+)
+
+save(tune_res_en2, file = "tune_res_en2.rda")
+```
+
+```{r}
+load("tune_res_en2.rda")
+```
+
+```{r}
+autoplot(tune_res_en2)
+```
+
+```{r}
+show_best(tune_res_en2, n = 1)
+best_en2 <- select_best(tune_res_en2,
+                          metric = "roc_auc",
+                          penalty,
+                          mixture
+                          ) # penaly = 0.11111 mixture = 0 roc_auc = 0.7370
+```
+
+4.  random forest
+
+```{r}
+rf_mod <- rand_forest(mtry = tune(), 
+                           trees = tune(), 
+                           min_n = tune()) %>%
+  set_engine("ranger", importance = "impurity") %>% 
+  set_mode("classification")
+
+rf_wk2 <- workflow() %>% 
+  add_model(rf_mod) %>% 
+  add_recipe(h1b_recipe2)
+
+rf_grid <- grid_regular(mtry(range = c(1, 5)), 
+                        trees(range = c(100, 300)),
+                        min_n(range = c(40, 100)),
+                        levels = 5)
+```
+
+```{r, eval=FALSE}
+tune_res_rf2 <- tune_grid(
+  rf_wk2, 
+  resamples = h1b_folds2, 
+  grid = rf_grid
+)
+
+save(tune_res_rf2, file = "tune_res_rf2.rda")
+
+```
+
+```{r}
+load("tune_res_rf2.rda")
+```
+
+```{r}
+autoplot(tune_res_rf2) + theme_minimal()
+```
+
+```{r}
+show_best(tune_res_rf2, n = 1)
+best_rf2 <- select_best(tune_res_rf2) #mtry = 5, trees = 200, min_n = 55, roc_auc = 0.7361
+```
+
+best model:
+
+```{r}
+final_en_model2 <- finalize_workflow(en_wk2, best_en2)
+final_en_model2 <- fit(final_en_model2, h1b_train2)
+
+final_en_train2 <- augment(final_en_model2, 
+                               h1b_train2) %>% 
+  select(NEW_CASE_STATUS, starts_with(".pred"))
+
+roc_auc(final_en_train2, truth = NEW_CASE_STATUS, .pred_DENIED) # training roc_auc = 0.7594
+
+final_en_test2 <- augment(final_en_model2, 
+                               h1b_test2) %>% 
+  select(NEW_CASE_STATUS, starts_with(".pred"))
+
+roc_auc(final_en_test2, truth = NEW_CASE_STATUS, .pred_DENIED) # testing roc_auc = 0.6589
+
+```
+
+```{r}
+roc_curve(final_en_test2, truth = NEW_CASE_STATUS, .pred_DENIED) %>% 
+  autoplot()
+
+conf_mat(final_en_test2, truth = NEW_CASE_STATUS, 
+         .pred_class) %>% 
+  autoplot(type = "heatmap")
+```
+
+
